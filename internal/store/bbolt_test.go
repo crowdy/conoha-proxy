@@ -24,10 +24,10 @@ func TestBoltStore_SaveAndLoad(t *testing.T) {
 	st := newTestStore(t)
 
 	svc := service.Service{
-		Name:      "myapp",
-		Hosts:     []string{"a.com"},
-		CreatedAt: time.Now().UTC().Round(time.Millisecond),
-		UpdatedAt: time.Now().UTC().Round(time.Millisecond),
+		Name:         "myapp",
+		Hosts:        []string{"a.com"},
+		CreatedAt:    time.Now().UTC().Round(time.Millisecond),
+		UpdatedAt:    time.Now().UTC().Round(time.Millisecond),
 		HealthPolicy: service.HealthPolicy{Path: "/up"},
 	}
 	require.NoError(t, st.SaveService(ctx, svc))

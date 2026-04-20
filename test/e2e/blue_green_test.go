@@ -24,8 +24,8 @@ func TestE2E_Scenario1_RegisteredButNotDeployed_Returns503(t *testing.T) {
 	t.Cleanup(h.Cleanup)
 
 	resp := h.AdminPOST("/v1/services", map[string]any{
-		"name":  "myapp",
-		"hosts": []string{"app.test"},
+		"name":          "myapp",
+		"hosts":         []string{"app.test"},
 		"health_policy": map[string]any{"path": "/up"},
 	})
 	require.Equal(t, 201, resp.StatusCode)
@@ -118,8 +118,8 @@ func TestE2E_Scenario5_ProbeFailure_Returns424_StateUnchanged(t *testing.T) {
 	})
 
 	h.AdminPOST("/v1/services", map[string]any{
-		"name":  "myapp",
-		"hosts": []string{"app.test"},
+		"name":          "myapp",
+		"hosts":         []string{"app.test"},
 		"health_policy": map[string]any{"path": "/up", "unhealthy_threshold": 2, "interval_ms": 50, "timeout_ms": 500},
 	})
 	h.AdminPOST("/v1/services/myapp/deploy", map[string]any{"target_url": good.URL})
