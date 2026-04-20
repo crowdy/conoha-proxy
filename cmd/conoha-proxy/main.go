@@ -47,7 +47,7 @@ func versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print build version",
-		Run: func(cmd *cobra.Command, _ []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Printf("conoha-proxy %s (commit %s, built %s)\n", version, commit, buildDate)
 		},
 	}

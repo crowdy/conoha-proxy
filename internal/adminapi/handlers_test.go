@@ -76,13 +76,13 @@ func (f *fakeTLS) snapshot() []string {
 
 // --- helpers ---
 
-func newHarness(t *testing.T, probeErr error) (*Handlers, *router.Router, *fakeStore, *fakeTLS) {
+func newHarness(t *testing.T, probeErr error) (*Handlers, *fakeStore, *fakeTLS) {
 	t.Helper()
 	st := newFakeStore()
 	r := router.New()
 	tlsMgr := &fakeTLS{}
 	h := NewHandlers(st, r, &fakeChecker{err: probeErr}, tlsMgr)
-	return h, r, st, tlsMgr
+	return h, st, tlsMgr
 }
 
 func do(h *Handlers, method, path string, body any) *httptest.ResponseRecorder {
@@ -99,7 +99,7 @@ func do(h *Handlers, method, path string, body any) *httptest.ResponseRecorder {
 // --- tests ---
 
 func TestPostServices_Creates(t *testing.T) {
-	h, _, st, tlsMgr := newHarness(t, nil)
+	h, st, tlsMgr := newHarness(t, nil)
 
 	rr := do(h, http.MethodPost, "/v1/services", map[string]any{
 		"name":  "myapp",
@@ -114,7 +114,7 @@ func TestPostServices_Creates(t *testing.T) {
 }
 
 func TestPostServices_RejectsDuplicateHosts(t *testing.T) {
-	h, _, _, _ := newHarness(t, nil)
+	h, _, _ := newHarness(t, nil)
 	rr := do(h, http.MethodPost, "/v1/services", map[string]any{
 		"name":  "a",
 		"hosts": []string{"x.com", "x.com"},
@@ -125,7 +125,7 @@ func TestPostServices_RejectsDuplicateHosts(t *testing.T) {
 // I6: upsert after another service exists must pass the UNION of all hosts
 // to the TLS manager (not just the new service's hosts).
 func TestPostServices_PassesUnionOfAllHostsToTLS(t *testing.T) {
-	h, _, st, tlsMgr := newHarness(t, nil)
+	h, st, tlsMgr := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "first", Hosts: []string{"a.example.com"},
 	})
@@ -142,7 +142,7 @@ func TestPostServices_PassesUnionOfAllHostsToTLS(t *testing.T) {
 // I9: re-upsert of an existing service must preserve active/draining/deadline
 // and created_at (admin-api.md contract).
 func TestPostServices_ExistingPreservesRuntimeState(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	future := time.Now().Add(time.Minute).UTC()
 	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	_ = st.SaveService(context.Background(), service.Service{
@@ -172,7 +172,7 @@ func TestPostServices_ExistingPreservesRuntimeState(t *testing.T) {
 }
 
 func TestGetServices_Lists(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{Name: "a", Hosts: []string{"a.com"}})
 
 	rr := do(h, http.MethodGet, "/v1/services", nil)
@@ -185,14 +185,14 @@ func TestGetServices_Lists(t *testing.T) {
 }
 
 func TestGetServiceByName_404(t *testing.T) {
-	h, _, _, _ := newHarness(t, nil)
+	h, _, _ := newHarness(t, nil)
 	rr := do(h, http.MethodGet, "/v1/services/missing", nil)
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
 
 // I3: GET /v1/services/{name} must expose `phase`.
 func TestGetServiceByName_ExposesPhase(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
 		ActiveTarget: &service.Target{URL: "http://live"},
@@ -207,7 +207,7 @@ func TestGetServiceByName_ExposesPhase(t *testing.T) {
 }
 
 func TestDeploy_HappyPath(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
 	})
@@ -224,7 +224,7 @@ func TestDeploy_HappyPath(t *testing.T) {
 }
 
 func TestDeploy_ProbeFailureReturns424(t *testing.T) {
-	h, _, st, _ := newHarness(t, errFake)
+	h, st, _ := newHarness(t, errFake)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
 		ActiveTarget: &service.Target{URL: "http://old"},
@@ -242,7 +242,7 @@ func TestDeploy_ProbeFailureReturns424(t *testing.T) {
 }
 
 func TestDeploy_SwapMovesActiveToDraining(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
 		ActiveTarget: &service.Target{URL: "http://old"},
@@ -263,7 +263,7 @@ func TestDeploy_SwapMovesActiveToDraining(t *testing.T) {
 }
 
 func TestRollback_ReversesActiveAndDraining(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	fut := time.Now().Add(1 * time.Minute)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
@@ -281,7 +281,7 @@ func TestRollback_ReversesActiveAndDraining(t *testing.T) {
 }
 
 func TestRollback_NoDrainingReturns409(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
 		ActiveTarget: &service.Target{URL: "http://only"},
@@ -293,7 +293,7 @@ func TestRollback_NoDrainingReturns409(t *testing.T) {
 
 // C1: rollback after the drain window closed must return 409.
 func TestRollback_ExpiredDrainReturns409(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	past := time.Now().Add(-1 * time.Second)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
@@ -312,7 +312,7 @@ func TestRollback_ExpiredDrainReturns409(t *testing.T) {
 
 // C2: rollback body.drain_ms must be reflected in the new deadline.
 func TestRollback_BodyDrainMsApplied(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	fut := time.Now().Add(1 * time.Minute)
 	_ = st.SaveService(context.Background(), service.Service{
 		Name: "myapp", Hosts: []string{"a.com"},
@@ -335,7 +335,7 @@ func TestRollback_BodyDrainMsApplied(t *testing.T) {
 }
 
 func TestDeleteService(t *testing.T) {
-	h, _, st, _ := newHarness(t, nil)
+	h, st, _ := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{Name: "a", Hosts: []string{"a.com"}})
 
 	rr := do(h, http.MethodDelete, "/v1/services/a", nil)
@@ -347,7 +347,7 @@ func TestDeleteService(t *testing.T) {
 
 // I5: Delete must remove the deleted service's hosts from the TLS domain set.
 func TestDeleteService_UnmanagesDeletedDomains(t *testing.T) {
-	h, _, st, tlsMgr := newHarness(t, nil)
+	h, st, tlsMgr := newHarness(t, nil)
 	_ = st.SaveService(context.Background(), service.Service{Name: "keep", Hosts: []string{"keep.com"}})
 	_ = st.SaveService(context.Background(), service.Service{Name: "gone", Hosts: []string{"gone.com"}})
 
@@ -359,7 +359,7 @@ func TestDeleteService_UnmanagesDeletedDomains(t *testing.T) {
 }
 
 func TestHealthz(t *testing.T) {
-	h, _, _, _ := newHarness(t, nil)
+	h, _, _ := newHarness(t, nil)
 	rr := do(h, http.MethodGet, "/healthz", nil)
 	require.Equal(t, http.StatusOK, rr.Code)
 }

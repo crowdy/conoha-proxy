@@ -67,8 +67,9 @@ func (s *BoltStore) SchemaVersion() (string, error) {
 	return v, err
 }
 
-// LoadAll returns every stored Service.
-func (s *BoltStore) LoadAll(ctx context.Context) ([]service.Service, error) {
+// LoadAll returns every stored Service. The context is accepted to satisfy
+// the Store interface; bbolt itself has no cancellation support.
+func (s *BoltStore) LoadAll(_ context.Context) ([]service.Service, error) {
 	var out []service.Service
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucketServices))
@@ -85,7 +86,7 @@ func (s *BoltStore) LoadAll(ctx context.Context) ([]service.Service, error) {
 }
 
 // SaveService upserts svc into the store.
-func (s *BoltStore) SaveService(ctx context.Context, svc service.Service) error {
+func (s *BoltStore) SaveService(_ context.Context, svc service.Service) error {
 	data, err := json.Marshal(svc)
 	if err != nil {
 		return fmt.Errorf("encode service: %w", err)
@@ -96,7 +97,7 @@ func (s *BoltStore) SaveService(ctx context.Context, svc service.Service) error 
 }
 
 // DeleteService removes the named service if present. Missing names are not an error.
-func (s *BoltStore) DeleteService(ctx context.Context, name string) error {
+func (s *BoltStore) DeleteService(_ context.Context, name string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		return tx.Bucket([]byte(bucketServices)).Delete([]byte(name))
 	})
