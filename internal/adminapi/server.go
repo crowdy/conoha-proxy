@@ -64,13 +64,13 @@ func NewServer(cfg ListenerConfig, handler http.Handler) (*Server, error) {
 		}
 	}
 
-	// Timeouts are deliberately generous: deploy calls include a health
-	// probe that may run for several seconds before responding.
+	// Deploy can block for the full probe window (unhealthy_threshold ×
+	// (interval_ms + timeout_ms)), which may exceed any fixed write
+	// deadline. We intentionally bound only headers and idle connections;
+	// slow callers are expected to time out on their side.
 	srv := &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 	return &Server{http: srv, ln: ln}, nil

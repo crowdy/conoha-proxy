@@ -76,7 +76,11 @@ func runCmd() *cobra.Command {
 	cmd.Flags().StringVar(&f.dataDir, "data-dir", "/var/lib/conoha-proxy", "persistent state directory")
 	cmd.Flags().StringVar(&f.httpAddr, "http-addr", ":80", "HTTP listen addr (ACME + redirect)")
 	cmd.Flags().StringVar(&f.httpsAddr, "https-addr", ":443", "HTTPS listen addr (reverse proxy)")
-	cmd.Flags().StringVar(&f.adminSock, "admin-socket", "/var/run/conoha-proxy.sock", "Unix socket for admin API (empty to disable)")
+	// Default admin socket lives under the data directory. The distroless
+	// `nonroot` user cannot create files in /var/run, and docker silently
+	// turns a missing bind-mount source into a directory — the only path
+	// the proxy is guaranteed to own is the mounted data volume.
+	cmd.Flags().StringVar(&f.adminSock, "admin-socket", "", "Unix socket for admin API (empty: <data-dir>/admin.sock)")
 	cmd.Flags().StringVar(&f.adminTCP, "admin-tcp", "", "loopback TCP address for admin API (e.g. 127.0.0.1:9999)")
 	cmd.Flags().StringVar(&f.acmeEmail, "acme-email", "", "ACME account email (required)")
 	cmd.Flags().StringVar(&f.acmeCA, "acme-ca", "", "override ACME directory URL (for Pebble in tests)")
@@ -156,10 +160,16 @@ func runProxy(ctx context.Context, f *runFlags) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	// Admin listener(s).
+	// Admin listener(s). If the operator specified neither flag, fall back
+	// to a Unix socket inside the data directory — the only path we know
+	// the process can write to on first run.
+	adminSock := f.adminSock
+	if adminSock == "" && f.adminTCP == "" {
+		adminSock = filepath.Join(f.dataDir, "admin.sock")
+	}
 	var adminServers []*adminapi.Server
-	if f.adminSock != "" {
-		s, err := adminapi.NewServer(adminapi.ListenerConfig{UnixSocket: f.adminSock}, handlers)
+	if adminSock != "" {
+		s, err := adminapi.NewServer(adminapi.ListenerConfig{UnixSocket: adminSock}, handlers)
 		if err != nil {
 			return err
 		}
@@ -171,9 +181,6 @@ func runProxy(ctx context.Context, f *runFlags) error {
 			return err
 		}
 		adminServers = append(adminServers, s)
-	}
-	if len(adminServers) == 0 {
-		return errors.New("at least one of --admin-socket or --admin-tcp must be set")
 	}
 
 	// Serve.

@@ -22,9 +22,6 @@ type Config struct {
 	CADirURL string
 	// Staging uses the Let's Encrypt staging endpoint when CADirURL is empty.
 	Staging bool
-	// AllowedDomains, when non-empty, restricts which hosts may obtain
-	// certificates. Empty means allow any.
-	AllowedDomains []string
 }
 
 // CertManager wraps certmagic.Config.
@@ -33,8 +30,6 @@ type CertManager struct {
 	magic   *certmagic.Config
 	issuer  *certmagic.ACMEIssuer
 	domains map[string]struct{}
-	// allowed is the allow-list of domains. nil/empty means allow any.
-	allowed map[string]struct{}
 }
 
 // New builds a CertManager with HTTP-01 challenge handling.
@@ -44,12 +39,16 @@ func New(c Config) (*CertManager, error) {
 	}
 	storage := &certmagic.FileStorage{Path: c.StorageDir}
 
+	// Two-step init so renewal uses the very config we built below (with
+	// our CA / staging settings) instead of certmagic.NewDefault(), which
+	// would silently redirect renewals to Let's Encrypt production.
+	var mCfg *certmagic.Config
 	cache := certmagic.NewCache(certmagic.CacheOptions{
 		GetConfigForCert: func(certmagic.Certificate) (*certmagic.Config, error) {
-			return certmagic.NewDefault(), nil
+			return mCfg, nil
 		},
 	})
-	mCfg := certmagic.New(cache, certmagic.Config{Storage: storage})
+	mCfg = certmagic.New(cache, certmagic.Config{Storage: storage})
 
 	ca := c.CADirURL
 	if ca == "" {
@@ -66,36 +65,24 @@ func New(c Config) (*CertManager, error) {
 	})
 	mCfg.Issuers = []certmagic.Issuer{issuer}
 
-	var allowed map[string]struct{}
-	if len(c.AllowedDomains) > 0 {
-		allowed = make(map[string]struct{}, len(c.AllowedDomains))
-		for _, d := range c.AllowedDomains {
-			allowed[d] = struct{}{}
-		}
-	}
-
 	return &CertManager{
 		magic:   mCfg,
 		issuer:  issuer,
 		domains: make(map[string]struct{}),
-		allowed: allowed,
 	}, nil
 }
 
 // ManageDomains ensures certmagic is managing (issuing/renewing) exactly
-// the given set of domains. Removed domains stop being renewed but files
-// are not deleted (they expire naturally — safer than aggressive deletion).
+// the given set of domains. Callers must pass the UNION of domains across
+// all services — a call with a subset will stop renewing everything else.
+// Removed domains stop being renewed but files are not deleted (they
+// expire naturally — safer than aggressive deletion).
 func (c *CertManager) ManageDomains(domains []string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	next := make(map[string]struct{}, len(domains))
 	for _, d := range domains {
-		if c.allowed != nil {
-			if _, ok := c.allowed[d]; !ok {
-				return fmt.Errorf("domain %q is not in AllowedDomains", d)
-			}
-		}
 		next[d] = struct{}{}
 	}
 

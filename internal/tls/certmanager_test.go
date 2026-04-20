@@ -8,11 +8,10 @@ import (
 
 func TestCertManager_NewManagesDomains(t *testing.T) {
 	cm, err := New(Config{
-		StorageDir:     t.TempDir(),
-		Email:          "admin@example.com",
-		CADirURL:       "https://localhost:14000/dir", // Pebble-compatible; we won't actually call it
-		Staging:        true,
-		AllowedDomains: nil,
+		StorageDir: t.TempDir(),
+		Email:      "admin@example.com",
+		CADirURL:   "https://localhost:14000/dir", // Pebble-compatible; we won't actually call it
+		Staging:    true,
 	})
 	require.NoError(t, err)
 	require.NotNil(t, cm)
