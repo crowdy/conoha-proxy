@@ -11,7 +11,6 @@ test:
 
 lint:
 	golangci-lint run
-	staticcheck ./...
 
 e2e:
 	$(GO) test -tags=e2e -timeout=5m ./test/e2e/...
