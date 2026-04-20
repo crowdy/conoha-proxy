@@ -1,0 +1,39 @@
+version: 2
+project_name: conoha-proxy
+
+builds:
+  - id: conoha-proxy
+    main: ./cmd/conoha-proxy
+    binary: conoha-proxy
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.buildDate={{.Date}}
+      - -X github.com/crowdy/conoha-proxy/internal/adminapi.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICES.md
+      - README.md
+
+dockers:
+  - image_templates:
+      - "ghcr.io/crowdy/conoha-proxy:{{ .Version }}"
+      - "ghcr.io/crowdy/conoha-proxy:latest"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{.Version}}"
+      - "--build-arg=COMMIT={{.Commit}}"
+      - "--build-arg=BUILD_DATE={{.Date}}"
+
+checksum:
+  name_template: "checksums.txt"
