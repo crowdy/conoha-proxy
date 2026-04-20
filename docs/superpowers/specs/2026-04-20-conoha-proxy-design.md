@@ -4,7 +4,7 @@
 - ステータス: ドラフト (MVP 対象)
 - Module: `github.com/crowdy/conoha-proxy`
 - License: Apache-2.0
-- Go: 1.22+
+- Go: 1.24+
 
 ---
 
@@ -68,10 +68,10 @@ conoha-proxy (single Go binary)
 ├─ HTTPS :443 (TLS termination + reverse proxy)
 ├─ Admin  /var/run/conoha-proxy.sock (Unix) または 127.0.0.1:9999 (TCP)
 └─ Background:
-   ├─ certmagic manager (renewal)
-   ├─ Health worker (per active/draining target)
-   └─ Persistence flusher (bbolt commit on state change)
+   └─ certmagic manager (renewal)
 ```
+
+> MVP スコープでは連続 health worker と独立 persistence flusher は実装しない (§12 参照)。`deploy` の合否は admin API 呼び出しスレッドで `health.ProbeOnce` を同期実行して判定する。
 
 ### 3.2 デプロイ配置図 (README にも掲載予定)
 
@@ -133,8 +133,9 @@ type Store interface {
     LoadAll(ctx context.Context) ([]Service, error)
     SaveService(ctx context.Context, svc Service) error
     DeleteService(ctx context.Context, name string) error
-    Tx(fn func(Tx) error) error
 }
+// (トランザクション API `Tx(fn func(Tx) error) error` は MVP では未導入。
+//  複数サービス横断の原子的更新が必要になった時点で追加する — §12 参照)
 
 // C3
 type Service struct {
@@ -153,9 +154,9 @@ type Target struct {
 
 // C4
 type Checker interface {
-    Watch(t Target, p HealthPolicy) (<-chan HealthEvent, func())
     ProbeOnce(ctx context.Context, t Target, p HealthPolicy) error
 }
+// (連続 watch の `Watch(t, p) (<-chan HealthEvent, func())` は §12 送り。MVP は同期 probe のみ)
 
 // C5
 type CertManager interface {
@@ -360,9 +361,9 @@ conoha-cli          conoha-proxy         new container
     │                     │ }
     │                     │ router.Reload
     │◀────────────────────┤ 200
-    │                     │
-    │                     │ health.Watch(new) 開始 (周期)
 ```
+
+(v0.1.0 時点では deploy 後の連続ヘルスチェックはしない。運用者は upstream 側ログと `GET /v1/services/{name}` で状況を把握する。§12 の "background health worker" で将来拡張予定。)
 
 ### 7.3 blue/green スワップ
 
@@ -394,16 +395,19 @@ T2 + drain_ms:
 ### 7.4 ロールバック
 
 ```
-POST /v1/services/myapp/rollback
-条件: svc.draining != nil (drain deadline 到達前)
+POST /v1/services/myapp/rollback [body: {drain_ms?: N}]
+前処理: svc.DropExpiredDraining(now)   // drain_deadline を過ぎた draining は消す
+条件:   svc.draining != nil (drain deadline 到達前)
 動作:
   tx {
     (active, draining) = (draining, active)
-    drain_deadline = now + drain_ms
+    drain_deadline = now + (body.drain_ms ?? 30_000)
     store.Save
   }
   router.Reload
 ```
+
+`drain_ms` は Service 自体には保持しないため (§5.4.5)、ロールバック時に deploy と同じ値を明示的に渡したい場合は body で指定する。省略時は 30 秒。
 
 drain 窓を逃した場合、旧ターゲットで再 deploy するしか手段がない (設計上の意図)。
 
@@ -521,7 +525,7 @@ func TestDeploy_BlueGreenSwap(t *testing.T) {
 | 項目 | 値 |
 |---|---|
 | Go module | `github.com/crowdy/conoha-proxy` |
-| Go 版 | 1.22+ |
+| Go 版 | 1.24+ |
 | License | Apache-2.0 (conoha-cli と同様) |
 | Copyright | `Copyright 2026 crowdy` |
 | README 言語 | 日本語 (主) + 英語・韓国語 |
@@ -587,6 +591,9 @@ conoha-proxy/
 
 ## 12. アウト・オブ・スコープ (将来候補)
 
+- **Background health worker** (per active/draining target, 周期 probe + transition event) — v0.1.0 は deploy 時の `ProbeOnce` のみ。運用観点で watch が欲しくなった時点で `Checker.Watch` 相当を追加する
+- **`Store.Tx(fn func(Tx) error) error`** — 現状は 1 サービス単位の SaveService で十分。複数サービス横断の原子的更新 (例: 全体リネーム、スキーマ移行) が必要になった時点で導入する
+- **`GET /v1/services/{name}` の `tls_status` / `health` の実データ化** — v0.1.0 はレスポンス shape のみ確定、値は placeholder (`unknown` / 省略)。TLS 発行・更新状態の集約とヘルス probe 結果のキャッシュが必要
 - DNS-01 チャレンジ (libdns ドライバ経由、wildcard 対応)
 - Basic Auth / IP allowlist / rate limit
 - Prometheus `/metrics`

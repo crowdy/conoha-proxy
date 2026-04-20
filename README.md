@@ -48,20 +48,25 @@ ConoHa VPS 向けの Go 製リバースプロキシデーモン。自動 HTTPS (
 
 ## クイックスタート
 
+Admin Unix socket は **data volume の中** (`/var/lib/conoha-proxy/admin.sock`) に配置される。distroless の `nonroot` ユーザーが確実に書き込める場所はそこだけのため。ホストから操作するときは data volume を bind-mount する。
+
 ```bash
+# ホスト側でディレクトリを用意し、コンテナ内 nonroot (uid 65532) に所有権を渡す
+sudo mkdir -p /var/lib/conoha-proxy
+sudo chown 65532:65532 /var/lib/conoha-proxy
+
 docker run -d --name conoha-proxy \
   -p 80:80 -p 443:443 \
-  -v conoha-proxy-data:/var/lib/conoha-proxy \
-  -v /var/run/conoha-proxy.sock:/var/run/conoha-proxy.sock \
+  -v /var/lib/conoha-proxy:/var/lib/conoha-proxy \
   ghcr.io/crowdy/conoha-proxy:latest \
   run --acme-email=admin@example.com
 
-# サービス登録
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services \
+# サービス登録 (ホスト側から同じパスでアクセス)
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services \
   -d '{"name":"myapp","hosts":["app.example.com"]}'
 
 # 初回デプロイ
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services/myapp/deploy \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/myapp/deploy \
   -d '{"target_url":"http://127.0.0.1:9001"}'
 ```
 

@@ -25,20 +25,25 @@ See the diagram in [README.md](README.md#配置). The proxy runs as a Docker con
 
 ## Quick start
 
+The admin Unix socket lives **inside the data volume** (`/var/lib/conoha-proxy/admin.sock`) — the distroless `nonroot` user cannot write anywhere else reliably. Bind-mount that directory from the host so you can reach the socket from outside the container.
+
 ```bash
+# Prepare the host directory, hand it to the in-container nonroot user (uid 65532)
+sudo mkdir -p /var/lib/conoha-proxy
+sudo chown 65532:65532 /var/lib/conoha-proxy
+
 docker run -d --name conoha-proxy \
   -p 80:80 -p 443:443 \
-  -v conoha-proxy-data:/var/lib/conoha-proxy \
-  -v /var/run/conoha-proxy.sock:/var/run/conoha-proxy.sock \
+  -v /var/lib/conoha-proxy:/var/lib/conoha-proxy \
   ghcr.io/crowdy/conoha-proxy:latest \
   run --acme-email=admin@example.com
 
-# Register a service
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services \
+# Register a service (same host-side path)
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services \
   -d '{"name":"myapp","hosts":["app.example.com"]}'
 
 # First deploy
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services/myapp/deploy \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/myapp/deploy \
   -d '{"target_url":"http://127.0.0.1:9001"}'
 ```
 

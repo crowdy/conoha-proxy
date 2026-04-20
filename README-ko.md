@@ -25,20 +25,25 @@ ConoHa VPS 용 Go 리버스 프록시 데몬. Let's Encrypt 기반 자동 HTTPS,
 
 ## 빠른 시작
 
+Admin Unix 소켓은 **data volume 내부** (`/var/lib/conoha-proxy/admin.sock`) 에 생성됩니다. distroless `nonroot` 사용자가 확실하게 쓸 수 있는 경로가 거기뿐이기 때문입니다. 호스트에서 조작할 때는 해당 디렉터리를 bind-mount 하세요.
+
 ```bash
+# 호스트에 디렉터리를 만들고 컨테이너 내 nonroot (uid 65532) 에게 소유권 부여
+sudo mkdir -p /var/lib/conoha-proxy
+sudo chown 65532:65532 /var/lib/conoha-proxy
+
 docker run -d --name conoha-proxy \
   -p 80:80 -p 443:443 \
-  -v conoha-proxy-data:/var/lib/conoha-proxy \
-  -v /var/run/conoha-proxy.sock:/var/run/conoha-proxy.sock \
+  -v /var/lib/conoha-proxy:/var/lib/conoha-proxy \
   ghcr.io/crowdy/conoha-proxy:latest \
   run --acme-email=admin@example.com
 
-# 서비스 등록
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services \
+# 서비스 등록 (호스트에서 동일 경로로 접근)
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services \
   -d '{"name":"myapp","hosts":["app.example.com"]}'
 
 # 최초 배포
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services/myapp/deploy \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/myapp/deploy \
   -d '{"target_url":"http://127.0.0.1:9001"}'
 ```
 

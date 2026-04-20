@@ -1,6 +1,6 @@
 # 運用 Runbook
 
-conoha-proxy を本番で動かすオペレータ向けの手順集。すべての admin API 呼び出しは Unix socket (`/var/run/conoha-proxy.sock`) を前提とする。外部からは SSH トンネル越しに叩く。
+conoha-proxy を本番で動かすオペレータ向けの手順集。すべての admin API 呼び出しは Unix socket (`/var/lib/conoha-proxy/admin.sock`) を前提とする。外部からは SSH トンネル越しに叩く。
 
 API のフィールド定義は [admin-api.md](admin-api.md) を参照。
 
@@ -11,7 +11,7 @@ API のフィールド定義は [admin-api.md](admin-api.md) を参照。
 ### 1. サービスを登録する
 
 ```bash
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "myapp",
@@ -29,7 +29,7 @@ curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services \
 ### 3. 初回デプロイ
 
 ```bash
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services/myapp/deploy \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/myapp/deploy \
   -H 'Content-Type: application/json' \
   -d '{"target_url": "http://127.0.0.1:9001"}'
 ```
@@ -42,7 +42,7 @@ conoha-proxy は同期的に `/up` を叩き、200 を確認できたら active 
 curl -I https://app.example.com/
 # HTTP/2 200
 
-curl --unix-socket /var/run/conoha-proxy.sock \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock \
   http://admin/v1/services/myapp | jq .
 # "active_target": { "url": "http://127.0.0.1:9001", ... }
 ```
@@ -58,13 +58,13 @@ curl --unix-socket /var/run/conoha-proxy.sock \
 # docker run -d -p 127.0.0.1:9002:8080 myapp:v2
 
 # swap + 30 秒の drain 窓
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services/myapp/deploy \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/myapp/deploy \
   -H 'Content-Type: application/json' \
   -d '{"target_url": "http://127.0.0.1:9002", "drain_ms": 30000}'
 
 # 新 upstream に切り替わっているかを確認
 curl -sI https://app.example.com/ | head -1
-curl --unix-socket /var/run/conoha-proxy.sock \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock \
   http://admin/v1/services/myapp | jq '.active_target.url, .draining_target.url'
 # "http://127.0.0.1:9002"
 # "http://127.0.0.1:9001"
@@ -77,19 +77,29 @@ curl --unix-socket /var/run/conoha-proxy.sock \
 **drain 窓の中でのみ有効**。新デプロイ直後に問題が発覚した場合に使う。
 
 ```bash
-curl --unix-socket /var/run/conoha-proxy.sock \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock \
   http://admin/v1/services/myapp/rollback \
   -X POST
 ```
 
-active と draining を入れ替え、drain deadline を `now + 既定 drain` (30 秒) に再設定する。drain 窓が既に切れていた場合は **409 `no_drain_target`** が返る。この場合は旧バージョンを再度 `deploy` するしかない。
+active と draining を入れ替え、drain deadline を `now + 既定 drain` (30 秒) に再設定する。deploy 時と揃えたい場合は body に `{"drain_ms": N}` を渡す:
+
+```bash
+curl --unix-socket /var/lib/conoha-proxy/admin.sock \
+  http://admin/v1/services/myapp/rollback \
+  -H 'Content-Type: application/json' \
+  -d '{"drain_ms": 30000}' \
+  -X POST
+```
+
+drain 窓が既に切れていた場合は **409 `no_drain_target`** が返る (ストア上に `draining_target` が残っていても、`drain_deadline` を過ぎていれば 409)。この場合は旧バージョンを再度 `deploy` するしかない。
 
 ### drain 窓が切れているとき
 
 ```bash
 # 新しいコンテナとして旧バージョンを再起動し、deploy し直す
 # docker run -d -p 127.0.0.1:9003:8080 myapp:v1
-curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services/myapp/deploy \
+curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services/myapp/deploy \
   -H 'Content-Type: application/json' \
   -d '{"target_url": "http://127.0.0.1:9003"}'
 ```
@@ -213,16 +223,16 @@ docker logs --since 1h conoha-proxy | jq 'select(.level == "ERROR")'
    docker run -d --name conoha-proxy \
      -p 80:80 -p 443:443 \
      -v conoha-proxy-data:/var/lib/conoha-proxy \
-     -v /var/run/conoha-proxy.sock:/var/run/conoha-proxy.sock \
+     -v /var/lib/conoha-proxy/admin.sock:/var/lib/conoha-proxy/admin.sock \
      ghcr.io/crowdy/conoha-proxy:v0.N+1 \
      run --acme-email=admin@example.com
    ```
 4. 起動直後に以下を確認する。
    ```bash
-   curl --unix-socket /var/run/conoha-proxy.sock http://admin/healthz
-   curl --unix-socket /var/run/conoha-proxy.sock http://admin/readyz
-   curl --unix-socket /var/run/conoha-proxy.sock http://admin/version
-   curl --unix-socket /var/run/conoha-proxy.sock http://admin/v1/services | jq '.services | length'
+   curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/healthz
+   curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/readyz
+   curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/version
+   curl --unix-socket /var/lib/conoha-proxy/admin.sock http://admin/v1/services | jq '.services | length'
    ```
 
 ### ロールバック手順
