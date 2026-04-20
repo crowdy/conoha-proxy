@@ -32,7 +32,9 @@ jobs:
           go-version: "1.24"
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.61
+          # v1.61 was built with Go 1.23 and rejects our Go 1.24 target. Pin
+          # a version built with a Go toolchain >= our go.mod directive.
+          version: v1.64.8
 
   docker:
     runs-on: ubuntu-latest
