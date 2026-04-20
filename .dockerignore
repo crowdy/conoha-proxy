@@ -1,0 +1,10 @@
+.git
+.github
+docs
+test
+*.md
+Makefile
+.golangci.yml
+.goreleaser.yaml
+dist/
+coverage.txt
