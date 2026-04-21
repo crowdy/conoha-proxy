@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - name: Resolve current tag
+        # Force goreleaser to use the tag that triggered this workflow.
+        # Without this, if multiple tags point to the same commit (e.g. an
+        # rc tag followed by the matching final tag), goreleaser's own
+        # tag-detection may pick the wrong one and publish with the wrong
+        # version string.
+        run: echo "GORELEASER_CURRENT_TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
       - uses: actions/setup-go@v5
         with: { go-version: "1.24" }
       - uses: docker/setup-qemu-action@v3
