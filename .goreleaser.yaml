@@ -23,25 +23,23 @@ archives:
       - NOTICES.md
       - README.md
 
-dockers:
-  - image_templates:
-      - "ghcr.io/crowdy/conoha-proxy:{{ .Version }}"
-      - "ghcr.io/crowdy/conoha-proxy:latest"
-    # Use the lean release-only Dockerfile that copies goreleaser's
-    # pre-built binary. The top-level Dockerfile is for from-source
-    # builds (CI, local) and assumes the source tree is in context, which
-    # is not true under goreleaser's dist/ staging.
-    dockerfile: Dockerfile.release
-    # Pick the linux/amd64 binary goreleaser already built under the
-    # `conoha-proxy` id. Without `ids`, goreleaser may include multiple
-    # goos/goarch binaries in the context and the Dockerfile `COPY
-    # conoha-proxy` becomes ambiguous.
+dockers_v2:
+  - id: conoha-proxy
     ids: [conoha-proxy]
-    goos: linux
-    goarch: amd64
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
+    dockerfile: Dockerfile.release
+    # Pull the linux binaries goreleaser already built under the
+    # `conoha-proxy` id. `ids` filters out the darwin builds so they
+    # don't end up in the docker build context. `platforms` drives
+    # the multi-arch manifest — builds: already produces both
+    # linux/amd64 and linux/arm64 binaries.
+    images:
+      - ghcr.io/crowdy/conoha-proxy
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
 
 checksum:
   name_template: "checksums.txt"
