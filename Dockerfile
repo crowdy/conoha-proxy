@@ -1,4 +1,11 @@
 # syntax=docker/dockerfile:1.7
+#
+# Self-contained from-source build. Used by CI (`docker build .`) and by
+# anyone running a local `docker build` against the repo root.
+#
+# The release/publish path uses Dockerfile.release instead — goreleaser's
+# build context is the dist/ staging directory and does not include the
+# Go source tree.
 FROM golang:1.24-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git ca-certificates
