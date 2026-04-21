@@ -1,16 +1,31 @@
 # syntax=docker/dockerfile:1.7
 #
-# Consumed by goreleaser (see .goreleaser.yaml `dockers:`). goreleaser's
-# docker build context is the release `dist/` staging directory, which
-# contains only the pre-built binary (and any `extra_files`) — NOT the
-# source tree. Running a multi-stage Go builder here therefore fails at
-# `COPY go.mod go.sum ./` because those files are not in the context.
+# Self-contained from-source build. Used by CI (`docker build .`) and by
+# anyone running a local `docker build` against the repo root.
 #
-# Copy the binary goreleaser already built (with the correct ldflags —
-# version/commit/buildDate — from the .goreleaser.yaml `builds` block)
-# into a distroless runtime image.
+# The release/publish path uses Dockerfile.release instead — goreleaser's
+# build context is the dist/ staging directory and does not include the
+# Go source tree.
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+RUN apk add --no-cache git ca-certificates
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+ARG COMMIT=""
+ARG BUILD_DATE=""
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-s -w \
+      -X main.version=${VERSION} \
+      -X main.commit=${COMMIT} \
+      -X main.buildDate=${BUILD_DATE} \
+      -X github.com/crowdy/conoha-proxy/internal/adminapi.version=${VERSION}" \
+    -o /out/conoha-proxy \
+    ./cmd/conoha-proxy
+
 FROM gcr.io/distroless/static:nonroot
-COPY conoha-proxy /usr/local/bin/conoha-proxy
+COPY --from=build /out/conoha-proxy /usr/local/bin/conoha-proxy
 USER nonroot:nonroot
 EXPOSE 80 443
 VOLUME ["/var/lib/conoha-proxy"]
