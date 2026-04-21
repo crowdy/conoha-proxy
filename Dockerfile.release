@@ -1,18 +1,15 @@
 # syntax=docker/dockerfile:1.7
 #
-# Consumed by goreleaser only (.goreleaser.yaml `dockers:` references this
-# file). goreleaser's docker build context is the release dist/ staging
-# directory, which contains only the pre-built binary (and any
-# `extra_files`) — NOT the source tree. Running a multi-stage Go builder
-# here therefore fails at `COPY go.mod go.sum ./` because those files are
-# not in scope.
-#
-# Copy the binary goreleaser already built (with the correct ldflags —
-# version/commit/buildDate — from the .goreleaser.yaml `builds` block)
-# into a distroless runtime image. For from-source builds (CI, local dev)
-# use the top-level Dockerfile instead.
-FROM gcr.io/distroless/static:nonroot
-COPY conoha-proxy /usr/local/bin/conoha-proxy
+# Consumed by goreleaser only (.goreleaser.yaml `dockers_v2:` references
+# this file). goreleaser's dockers_v2 build context is a dist/ staging
+# directory laid out as <goos>/<goarch>/<binary> so that buildx can
+# consume it for multi-arch manifest builds. TARGETPLATFORM is injected
+# by buildx per-platform (e.g. "linux/amd64", "linux/arm64") and is used
+# to pick the right binary. For from-source builds (CI, local dev) use
+# the top-level Dockerfile instead.
+FROM --platform=$TARGETPLATFORM gcr.io/distroless/static:nonroot
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/conoha-proxy /usr/local/bin/conoha-proxy
 USER nonroot:nonroot
 EXPOSE 80 443
 VOLUME ["/var/lib/conoha-proxy"]
