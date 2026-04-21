@@ -28,12 +28,16 @@ dockers:
       - "ghcr.io/crowdy/conoha-proxy:{{ .Version }}"
       - "ghcr.io/crowdy/conoha-proxy:latest"
     dockerfile: Dockerfile
+    # Pick the linux/amd64 binary goreleaser already built under the
+    # `conoha-proxy` id. Without `ids`, goreleaser may include multiple
+    # goos/goarch binaries in the context and the Dockerfile `COPY
+    # conoha-proxy` becomes ambiguous.
+    ids: [conoha-proxy]
+    goos: linux
+    goarch: amd64
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
-      - "--build-arg=VERSION={{.Version}}"
-      - "--build-arg=COMMIT={{.Commit}}"
-      - "--build-arg=BUILD_DATE={{.Date}}"
 
 checksum:
   name_template: "checksums.txt"
